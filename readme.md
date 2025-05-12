@@ -1,23 +1,23 @@
 # Oil Price Dashboard
 
-An interactive **Streamlit** application for visualizing historical crude oil prices (Brent/WTI) and generating future price forecasts using an **LSTM** model served via **FastAPI**.
+An interactive **Streamlit** application for visualizing historical crude oil prices (Brent/WTI) and generating future price forecasts using an **LSTM** model directly loaded within the dashboard.
 
 ---
 
 ## 🎯 Project Goals
 
-- Provide an intuitive visual overview of historical oil price data.
-- Integrate technical indicators (moving averages, Bollinger Bands, seasonal decomposition) for enhanced trend analysis.
-- Offer a daily price prediction feature (1–30 days ahead) to support decision-making.
+* Provide an intuitive visual overview of historical oil price data.
+* Integrate technical indicators (moving averages, Bollinger Bands, seasonal decomposition) for enhanced trend analysis.
+* Offer a price prediction feature (1–30 days ahead) embedded in the Streamlit dashboard.
 
 ---
 
 ## ✨ Key Features
 
-- **Interactive charts** with Plotly for daily prices.
-- **Technical indicators**: moving averages, Bollinger Bands, seasonal decomposition.
-- **Latest metrics**: current price, daily change, and moving averages.
-- **Price forecasting** via LSTM model with user-defined horizon.
+* **Interactive charts** with Plotly for daily prices.
+* **Technical indicators**: moving averages, Bollinger Bands, seasonal decomposition.
+* **Latest metrics**: current price, daily change, and moving averages.
+* **Price forecasting** via LSTM model loaded directly in Streamlit.
 
 ---
 
@@ -48,34 +48,26 @@ An interactive **Streamlit** application for visualizing historical crude oil pr
 
 4. **Prepare data & model**
 
-   - **Source data**: Download historical price CSV from Yahoo Finance (ticker BZ=F for Brent or CL=F for WTI) as of **May 12, 2025**, and save as `data/oil_prices.csv`.csv\`.
-   - If you haven’t trained the model yet, run:
+   * Download historical price CSV from Yahoo Finance (ticker BZ=F or CL=F) as of **May 12, 2025**, and save as `data/oil_prices.csv`.
+   * If you haven’t trained the model yet, run:
 
      ```bash
      python train.py
      ```
 
-   - This will generate `models/best_oil_lstm.pt` and `models/scaler.save`.
+     This will generate `models/best_oil_lstm.pt` and `models/scaler.save`.
 
 ---
 
 ## ⚙️ Running the Application
 
-1. **Start the FastAPI backend**
+Simply launch the Streamlit dashboard:
 
-   ```bash
-   python -m uvicorn app.api:app --reload
-   ```
+```bash
+streamlit run app/dashboard.py
+```
 
-   - Access Swagger UI at `http://127.0.0.1:8000/docs`.
-
-2. **Launch the Streamlit dashboard**
-
-   ```bash
-   streamlit run app/dashboard.py
-   ```
-
-   - Open your browser at `http://localhost:8501`.
+Open your browser at `http://localhost:8501` to use the dashboard.
 
 ---
 
@@ -84,8 +76,7 @@ An interactive **Streamlit** application for visualizing historical crude oil pr
 ```plaintext
 dashboard-oil-price/
 ├─ app/
-│  ├─ api.py           # FastAPI endpoint for price predictions
-│  └─ dashboard.py     # Streamlit dashboard application
+│  └─ dashboard.py     # Streamlit dashboard application (loads model & scaler)
 ├─ data/
 │  └─ oil_prices.csv   # Historical price data (CSV)
 ├─ models/
@@ -95,21 +86,3 @@ dashboard-oil-price/
 ├─ requirements.txt    # Python package dependencies
 └─ README.md           # Project documentation
 ```
-
----
-
-## 🤝 Contributing
-
-Contributions are welcome! Feel free to open an issue or submit a pull request with improvements or feature suggestions.
-
----
-
-## 📬 Contact
-
-**Lucky Santoso**
-✉️ [lucky@example.com](mailto:lucky@example.com)
-🔗 [github.com/luckysantoso](https://github.com/luckysantoso)
-
----
-
-> **Note:** This project is for demonstration purposes. For production use, ensure thorough data validation and model retraining according to your business needs.
