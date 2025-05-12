@@ -7,6 +7,9 @@ import joblib
 import sys, os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from train import OilPriceLSTM  # pastikan path import ini sesuai struktur Anda
+import yfinance as yf
+import datetime as dt
+from data.fetch_data import fetch_and_save
 
 # —————————————— Streamlit Config ——————————————
 st.set_page_config(page_title="Oil Price Dashboard", layout="wide")
@@ -20,10 +23,14 @@ st.sidebar.markdown("**Contact:**\n- Email: [lucky.sntso@gmail.com](mailto:lucky
 st.sidebar.markdown("---")
 
 # —————————————— Data Loading ——————————————
-@st.cache_data
-def load_data(path):
+@st.cache_data(ttl=24 * 60 * 60)
+def load_data(ticker="BZ=F", period="10y", csv_path="data/oil_prices.csv"):
+    # pastikan folder data ada & selalu fetch terbaru
+    os.makedirs(os.path.dirname(csv_path), exist_ok=True)
+    fetch_and_save(tickers=ticker, period=period)
+
     df_raw = pd.read_csv(
-        path,
+        csv_path,
         skiprows=2,
         header=None,
         names=["Date", "Close"]
@@ -32,7 +39,10 @@ def load_data(path):
     df_raw["Date"] = pd.to_datetime(df_raw["Date"])
     return df_raw.set_index("Date").sort_index()
 
-df = load_data("data/oil_prices.csv")
+
+# Panggil
+df = load_data("BZ=F", "10y")
+
 
 # —————————————— Model & Scaler Loading ——————————————
 @st.cache_resource
@@ -48,12 +58,12 @@ def load_model_and_scaler():
 model, scaler = load_model_and_scaler()
 
 # —————————————— Statistik Terkini ——————————————
-last_price = df["Close"].iloc[-1]
-prev_price = df["Close"].iloc[-2]
+last_price = float(df["Close"].iloc[-1])
+prev_price = float(df["Close"].iloc[-2])
 delta = last_price - prev_price
 pct = delta / prev_price * 100
-ma7 = df["Close"].rolling(7).mean().iloc[-1]
-ma30 = df["Close"].rolling(30).mean().iloc[-1]
+ma7 = float(df["Close"].rolling(7).mean().iloc[-1])
+ma30 = float(df["Close"].rolling(30).mean().iloc[-1])
 
 col_a, col_b, col_c, col_d = st.columns(4)
 col_a.metric("Harga Terkini", f"${last_price:.2f}")
@@ -146,10 +156,12 @@ fig_hist.add_trace(go.Scatter(x=df.index, y=df["BB_lower"], name="Lower Band", f
 
 st.dataframe(df.tail(10))
 
+current_year = dt.date.today().year
 st.markdown(
-    """
-    **Catatan:**
-    - Data diambil dari Yahoo Finance pada tanggal **12 Mei 2025**
-    - Powered by: *Lucky Santoso*
-    """
+    f"""
+    <div style="text-align: center; font-size:20px; color: gray; margin-top: 1rem;">
+        Powered by Lucky Santoso &bull; {current_year}
+    </div>
+    """,
+    unsafe_allow_html=True
 )
