@@ -10,3 +10,5 @@ scikit-learn
 joblib
 tqdm
 requests
+yfinance
+pandas_datareader
