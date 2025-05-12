@@ -1,0 +1,12 @@
+streamlit
+pandas
+numpy
+plotly
+statsmodels
+fastapi
+uvicorn[standard]
+torch
+scikit-learn
+joblib
+tqdm
+requests
