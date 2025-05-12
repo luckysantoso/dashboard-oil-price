@@ -6,10 +6,10 @@ import torch
 import joblib
 import sys, os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from train import OilPriceLSTM  # pastikan path import ini sesuai struktur Anda
-import yfinance as yf
+from train import NBeats  
 import datetime as dt
 from data.fetch_data import fetch_and_save
+from train import NBeats, NBeatsBlock, GenericBasis, WINDOW_SIZE, HORIZON
 
 # —————————————— Streamlit Config ——————————————
 st.set_page_config(page_title="Oil Price Dashboard", layout="wide")
@@ -47,12 +47,30 @@ df = load_data("BZ=F", "10y")
 # —————————————— Model & Scaler Loading ——————————————
 @st.cache_resource
 def load_model_and_scaler():
-    # load LSTM model
-    model = OilPriceLSTM()
-    model.load_state_dict(torch.load("models/best_oil_lstm.pt", map_location="cpu"))
+    # 1) Bangun kembali blocks N-Beats sesuai setting training:
+    backcast_size = WINDOW_SIZE
+    theta_size    = WINDOW_SIZE + HORIZON
+    basis_fn      = GenericBasis(backcast_size, HORIZON)
+
+    blocks = [
+        NBeatsBlock(
+            input_size = backcast_size,
+            theta_size = theta_size,
+            basis      = basis_fn,
+            n_layers     = 4,      # sama dengan saat training
+            layer_size = 256     # sama dengan saat training
+        )
+        for _ in range(3)       # 3 blocks seperti waktu training
+    ]
+
+    # 2) Instansiasi model dengan blocks itu
+    model = NBeats(blocks)
+
+    # 3) Load weights dan scaler
+    model.load_state_dict(torch.load("models/best_nbeats.pt", map_location="cpu"))
     model.eval()
-    # load scaler
     scaler = joblib.load("models/scaler.save")
+
     return model, scaler
 
 model, scaler = load_model_and_scaler()
@@ -66,7 +84,7 @@ ma7 = float(df["Close"].rolling(7).mean().iloc[-1])
 ma30 = float(df["Close"].rolling(30).mean().iloc[-1])
 
 col_a, col_b, col_c, col_d = st.columns(4)
-col_a.metric("Harga Terkini", f"${last_price:.2f}")
+col_a.metric("Harga Terkini (USD/barel)", f"${last_price:.2f}")
 col_b.metric("Perubahan Harian", f"{delta:.2f}", f"{pct:.2f}%")
 col_c.metric("MA 7-hari", f"${ma7:.2f}")
 col_d.metric("MA 30-hari", f"${ma30:.2f}")
@@ -88,59 +106,48 @@ st.markdown("---")
 
 # —————————————— Form Prediksi ——————————————
 st.subheader("Form Prediksi")
-last_timestamp = df.index.max()
+last_date = df.index.max().date()
 
-col1, col2 = st.columns(2)
-with col1:
-    start_date = st.date_input(
-        "Mulai Prediksi",
-        value=last_timestamp.date(),
-        help="Tanggal terakhir data historis"
-    )
-with col2:
-    horizon = st.slider(
-        "Horizon Prediksi (hari)",
-        min_value=1,
-        max_value=30,
-        value=7,
-        help="Jumlah hari ke depan untuk diprediksi"
-    )
+col_a, col_b = st.columns(2)
+with col_a:
+    start_date = st.date_input("Mulai Prediksi", value=last_date)
+with col_b:
+    # slider sekarang sampai 100 hari
+    horizon = st.slider("Horizon Prediksi (hari)", min_value=1, max_value=100, value=7)
 
 if st.button("Jalankan Prediksi"):
-    try:
-        # ambil window 30 hari terakhir hingga start_date
-        df_slice = df.loc[:pd.to_datetime(start_date)]
-        if len(df_slice) < 30:
-            st.error("Tidak cukup data historis (minimal 30 hari).")
-        else:
-            window = df_slice["Close"].values[-30:]
-            seq = scaler.transform(window.reshape(-1, 1)).flatten().tolist()
+    df_slice = df.loc[:pd.to_datetime(start_date)]
+    if len(df_slice) < WINDOW_SIZE:
+        st.error(f"Data historis kurang (minimal {WINDOW_SIZE} hari).")
+    else:
+        # gunakan last 60 hari sebagai input
+        window_days = WINDOW_SIZE
+        window = df_slice["Close"].values[-window_days:]
+        seq = scaler.transform(window.reshape(-1,1)).flatten().tolist()
 
-            preds_norm = []
-            for _ in range(horizon):
-                x = torch.tensor(seq[-30:], dtype=torch.float32).unsqueeze(0).unsqueeze(-1)
-                with torch.no_grad():
-                    p = model(x).item()
-                preds_norm.append(p)
-                seq.append(p)
+        preds_norm = []
+        for _ in range(horizon):
+            x = torch.tensor(seq[-window_days:], dtype=torch.float32) \
+                     .unsqueeze(0).unsqueeze(-1)  # shape (1,60,1)
+            with torch.no_grad():
+                p = model(x).item()
+            preds_norm.append(p)
+            seq.append(p)
 
-            preds = scaler.inverse_transform([[v] for v in preds_norm]).flatten().tolist()
-            dates = pd.date_range(
-                start=pd.to_datetime(start_date) + pd.Timedelta(days=1),
-                periods=horizon
-            )
+        preds = scaler.inverse_transform([[v] for v in preds_norm]).flatten().tolist()
+        dates = pd.date_range(
+            start=pd.to_datetime(start_date) + pd.Timedelta(days=1),
+            periods=horizon
+        )
 
-            df_pred = pd.DataFrame({"Date": dates, "Predicted": preds}).set_index("Date")
-            df_plot = pd.concat([df["Close"], df_pred["Predicted"]], axis=1)
+        df_pred = pd.DataFrame({"Date": dates, "Predicted": preds}).set_index("Date")
+        df_plot = pd.concat([df["Close"], df_pred["Predicted"]], axis=1)
 
-            # plot hasil prediksi
-            fig_pred = go.Figure()
-            fig_pred.add_trace(go.Scatter(x=df_plot.index, y=df_plot["Close"], name="Actual"))
-            fig_pred.add_trace(go.Scatter(x=df_plot.index, y=df_plot["Predicted"], name="Predicted"))
-            st.subheader("Hasil Prediksi Harga Minyak")
-            st.plotly_chart(fig_pred, use_container_width=True)
-    except Exception as e:
-        st.error(f"Error saat prediksi: {e}")
+        st.subheader("Hasil Prediksi Harga Minyak")
+        fig_pred = go.Figure()
+        fig_pred.add_trace(go.Scatter(x=df_plot.index, y=df_plot["Close"], name="Actual", mode="lines", connectgaps=True))
+        fig_pred.add_trace(go.Scatter(x=df_plot.index, y=df_plot["Predicted"], name="Predicted", mode="lines", connectgaps=True))
+        st.plotly_chart(fig_pred, use_container_width=True)
 
 st.markdown("---")
 
